@@ -4,18 +4,76 @@ from config import booth_lst, admin_password
 import sms
 from datetime import datetime
 
+def main():
+    if 'authenticated' not in st.session_state:
+        st.session_state['authenticated'] = False
+    if 'add_booth' not in st.session_state:
+        st.session_state['add_booth'] = False
+
+    page = st.sidebar.selectbox("페이지 선택", ["부스 관리자용 인터페이스", "부스 생성"])
+
+    if page == "부스 관리자용 인터페이스":
+        if st.session_state['authenticated']:
+            show_manager_interface()
+        else:
+            show_password_form()
+    elif page == "부스 생성":
+        if st.session_state['authenticated']:
+            show_add_booth_form()
+        else:
+            show_password_form()
+
+def show_password_form():
+    st.header("부스 관리자용 인터페이스")
+    password = st.text_input("비밀번호를 입력하세요", type="password")
+    
+    if st.button("비밀번호 확인"):
+        if password == admin_password:
+            st.session_state['authenticated'] = True
+            st.experimental_rerun()
+        else:
+            st.error("비밀번호가 틀렸습니다.")
+            st.session_state['authenticated'] = False
+    
+    if st.session_state['authenticated']:
+        st.experimental_rerun()
+
 def show_manager_interface():
     st.header("부스 관리자용 인터페이스")
     page = st.sidebar.selectbox("페이지 선택", ["부스 관리", "부스 생성"])
 
     if page == "부스 관리":
-        booth_number = st.selectbox("관리하실 부스를 선택해주세요", range(len(booth_lst)), format_func=lambda x: booth_lst[x])
-        show_reservations(booth_number)
+        show_booth_list()
     elif page == "부스 생성":
         show_add_booth_form()
 
+def show_booth_list():
+    st.title("부스 관리 시스템")
+    st.header("부스 목록")
+
+    conn = get_database_connection()
+    cursor = conn.cursor()
+
+    # 기존 부스 리스트 초기화
+    booth_lst.clear()
+
+    cursor.execute("SELECT booth FROM order_sequence")
+    booths = cursor.fetchall()
+
+    for booth in booths:
+        booth_lst.append(booth[0])
+
+    if not booth_lst:
+        st.write("부스가 없습니다. 부스 생성 페이지에서 부스를 추가해 주세요.")
+    else:
+        booth_number = st.selectbox("관리하실 부스를 선택해주세요", range(len(booth_lst)), format_func=lambda x: booth_lst[x])
+        show_reservations(booth_number)
+
+    conn.close()
+
 def show_reservations(booth_number):
     send_time = datetime.today().strftime("%Y/%m/%d %H:%M:%S")
+    st.title("부스 관리 시스템")
     st.header("예약 목록")
 
     conn = get_database_connection()
@@ -81,12 +139,14 @@ def show_add_booth_form():
     
     if st.button("비밀번호 확인"):
         if password == admin_password:
+            st.session_state['authenticated'] = True
             st.session_state['add_booth'] = True
             st.experimental_rerun()
         else:
             st.error("비밀번호가 틀렸습니다.")
+            st.session_state['authenticated'] = False
     
-    if st.session_state.get('add_booth'):
+    if st.session_state['authenticated'] and st.session_state['add_booth']:
         add_booth_form()
 
 def add_booth_form():
@@ -98,9 +158,11 @@ def add_booth_form():
         add_booth_to_database(booth_location, booth_name)
         st.success("부스가 성공적으로 추가되었습니다.")
         
-        # 부스 리스트에 추가
+        # 부스 리스트 초기화 및 추가
+        booth_lst.clear()
         booth_lst.append(f"{booth_location} : {booth_name}")
         st.session_state['add_booth'] = False
+        st.session_state['authenticated'] = False
         st.experimental_rerun()
 
 def add_booth_to_database(location, name):
@@ -114,3 +176,6 @@ def add_booth_to_database(location, name):
 
     conn.commit()
     conn.close()
+
+if __name__ == "__main__":
+    main()
